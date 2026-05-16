@@ -52,7 +52,7 @@ function fakeContext(): SharedRequestContext {
 }
 
 describe('buildImagesRequestSpec', () => {
-  it('builds Krill generations with compatible JSON params', async () => {
+  it('builds Krill generations without overriding size or quality', async () => {
     const plan: ImagesRequestPlan = {
       id: 'json',
       transport: 'json',
@@ -76,8 +76,8 @@ describe('buildImagesRequestSpec', () => {
     expect(JSON.parse(spec.requestInit.body as string)).toEqual({
       model: 'cn-gpt-image-2',
       prompt: 'generate an image',
-      size: '1024x1024',
-      quality: 'medium',
+      size: 'auto',
+      quality: 'high',
       output_format: 'png',
       moderation: 'low',
       response_format: 'b64_json',
@@ -103,8 +103,8 @@ describe('buildImagesRequestSpec', () => {
     expect((spec.requestInit.headers as Record<string, string>)['Content-Type']).toBeUndefined()
     expect(spec.debugBody).toMatchObject({
       model: 'cn-gpt-image-2',
-      size: '1024x1024',
-      quality: 'medium',
+      size: 'auto',
+      quality: 'high',
       output_format: 'png',
       moderation: 'low',
       bodyMode: 'multipart',
@@ -116,8 +116,8 @@ describe('buildImagesRequestSpec', () => {
     const form = spec.requestInit.body as FormData
     expect(form.get('model')).toBe('cn-gpt-image-2')
     expect(form.get('prompt')).toBe('edit this image')
-    expect(form.get('size')).toBe('1024x1024')
-    expect(form.get('quality')).toBe('medium')
+    expect(form.get('size')).toBe('auto')
+    expect(form.get('quality')).toBe('high')
     expect(form.get('output_format')).toBe('png')
     expect(form.get('moderation')).toBe('low')
     expect(form.get('image[]')).toBeInstanceOf(Blob)

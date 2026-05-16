@@ -96,8 +96,8 @@ describe('callKrillAsyncImagesApi', () => {
     const form = createInit.body as FormData
     expect(form.get('model')).toBe('cn-gpt-image-2')
     expect(form.get('prompt')).toBe('generate this image')
-    expect(form.get('size')).toBe('1024x1024')
-    expect(form.get('quality')).toBe('medium')
+    expect(form.get('size')).toBe('auto')
+    expect(form.get('quality')).toBe('high')
     expect(form.get('response_format')).toBe('b64_json')
     expect(form.get('image[]')).toBeNull()
   })

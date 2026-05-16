@@ -145,8 +145,8 @@ async function buildKrillProxyBody(request, upstreamPath, headers) {
   const normalized = {
     ...payload,
     model: "cn-gpt-image-2",
-    size: normalizeSize(typeof payload.size === "string" ? payload.size : ""),
-    quality: "medium",
+    size: typeof payload.size === "string" && payload.size.trim() ? payload.size.trim() : "auto",
+    quality: typeof payload.quality === "string" && payload.quality.trim() ? payload.quality.trim() : "auto",
     output_format: "png",
     moderation: "low",
     response_format: "b64_json",
@@ -221,8 +221,8 @@ async function createKrillJob(request, env, cors) {
     params: {
       model: "cn-gpt-image-2",
       prompt,
-      size: normalizeSize(stringField(form, "size")),
-      quality: normalizeQuality(stringField(form, "quality")),
+      size: stringField(form, "size") || "auto",
+      quality: stringField(form, "quality") || "auto",
       output_format: "png",
       moderation: "low",
     },
@@ -378,8 +378,8 @@ async function buildKrillUpstreamJobRequest(job, env, attempt) {
   const form = new FormData();
   form.append("model", "cn-gpt-image-2");
   form.append("prompt", job.params.prompt);
-  form.append("size", job.params.size || "1024x1024");
-  form.append("quality", job.params.quality || "medium");
+  form.append("size", job.params.size || "auto");
+  form.append("quality", job.params.quality || "auto");
   form.append("output_format", "png");
   form.append("moderation", "low");
   form.append("response_format", "b64_json");
@@ -408,20 +408,14 @@ function buildKrillGenerateBody(job, attempt) {
   const body = {
     model: "cn-gpt-image-2",
     prompt: job.params.prompt,
-    size: "512x512",
-    quality: "medium",
+    size: job.params.size || "auto",
+    quality: job.params.quality || "auto",
     output_format: "png",
     moderation: "low",
   };
 
   if (attempt <= 2) {
     body.response_format = "b64_json";
-  }
-  if (attempt === 3) {
-    body.size = "1024x1024";
-  }
-  if (attempt >= 4) {
-    body.quality = "standard";
   }
 
   return body;
@@ -784,17 +778,6 @@ function isFileLike(value) {
 function resolveIncomingAuth(request, env) {
   if (env.KRILL_API_KEY) return `Bearer ${env.KRILL_API_KEY}`;
   return request.headers.get("Authorization") || "";
-}
-
-function normalizeSize(value) {
-  if (!value || value === "auto") return "1024x1024";
-  return value;
-}
-
-function normalizeQuality(value) {
-  const quality = (value || "medium").toLowerCase();
-  if (quality === "low" || quality === "medium" || quality === "high") return quality;
-  return "medium";
 }
 
 function extensionForType(type) {

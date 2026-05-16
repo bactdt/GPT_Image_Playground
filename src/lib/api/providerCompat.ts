@@ -9,8 +9,8 @@ export function isKrillProviderName(providerName: string | null | undefined): bo
 export function resolveKrillImageParams(params: TaskParams) {
   return {
     model: KRILL_IMAGE_MODEL,
-    size: params.size && params.size !== 'auto' ? params.size : '1024x1024',
-    quality: 'medium' as const,
+    size: params.size,
+    quality: params.quality,
     output_format: 'png' as const,
     moderation: 'low' as const,
   }
