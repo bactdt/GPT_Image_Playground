@@ -6,7 +6,7 @@ export function isKrillProviderName(providerName: string | null | undefined): bo
   return providerName?.trim().toLowerCase() === 'krill'
 }
 
-export function resolveKrillEditParams(params: TaskParams) {
+export function resolveKrillImageParams(params: TaskParams) {
   return {
     model: KRILL_IMAGE_MODEL,
     size: params.size && params.size !== 'auto' ? params.size : '1024x1024',
@@ -15,3 +15,5 @@ export function resolveKrillEditParams(params: TaskParams) {
     moderation: 'low' as const,
   }
 }
+
+export const resolveKrillEditParams = resolveKrillImageParams

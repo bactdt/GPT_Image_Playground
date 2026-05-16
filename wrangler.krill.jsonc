@@ -1,0 +1,38 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "blue-cherry-a344",
+  "main": "docs/krill-cloudflare-worker.mjs",
+  "compatibility_date": "2026-05-16",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true
+  },
+  "kv_namespaces": [
+    {
+      "binding": "JOBS",
+      "id": "869f3cce7ff649aeaf6e025aa73b93db"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "KRILL_UPLOADS",
+      "bucket_name": "krill-uploads"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "KRILL_QUEUE",
+        "queue": "krill-queue"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "krill-queue",
+        "max_batch_size": 1,
+        "max_batch_timeout": 5,
+        "max_retries": 1
+      }
+    ]
+  }
+}

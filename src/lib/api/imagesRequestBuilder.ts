@@ -1,7 +1,7 @@
 import { buildRequestUrl } from './config'
 import { createApiError, dataUrlToBlob, isDataUrl, isHttpUrl } from './imageTransforms'
 import { getImageExtensionFromMimeType } from '../imageMime'
-import { isKrillProviderName, resolveKrillEditParams } from './providerCompat'
+import { isKrillProviderName, resolveKrillEditParams, resolveKrillImageParams } from './providerCompat'
 import type { ApiInputImageFile, CallApiOptions, ImagesRequestPlan, SharedRequestContext } from './types'
 
 interface BuildImagesRequestSpecOptions {
@@ -147,22 +147,34 @@ function buildImagesGenerateRequestSpec({
   ctx,
 }: BuildImagesRequestSpecOptions): ImagesRequestSpec {
   const { settings, prompt, params } = opts
-  const body: Record<string, unknown> = {
-    model: settings.model,
-    prompt,
-    size: params.size,
-    quality: params.quality,
-    output_format: params.output_format,
-    moderation: params.moderation,
-  }
+  const isKrillGenerate = isKrillProviderName(opts.providerName)
+  const krillParams = isKrillGenerate ? resolveKrillImageParams(params) : null
+  const body: Record<string, unknown> = krillParams
+    ? {
+        model: krillParams.model,
+        prompt,
+        size: krillParams.size,
+        quality: krillParams.quality,
+        output_format: krillParams.output_format,
+        moderation: krillParams.moderation,
+        response_format: 'b64_json',
+      }
+    : {
+        model: settings.model,
+        prompt,
+        size: params.size,
+        quality: params.quality,
+        output_format: params.output_format,
+        moderation: params.moderation,
+      }
 
-  if (params.output_format !== 'png' && params.output_compression != null) {
+  if (!isKrillGenerate && params.output_format !== 'png' && params.output_compression != null) {
     body.output_compression = params.output_compression
   }
-  if (params.n > 1) {
+  if (!isKrillGenerate && params.n > 1) {
     body.n = params.n
   }
-  if (plan.transport === 'stream') {
+  if (!isKrillGenerate && plan.transport === 'stream') {
     body.stream = true
   }
 

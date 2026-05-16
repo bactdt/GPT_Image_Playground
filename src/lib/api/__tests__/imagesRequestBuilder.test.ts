@@ -52,6 +52,38 @@ function fakeContext(): SharedRequestContext {
 }
 
 describe('buildImagesRequestSpec', () => {
+  it('builds Krill generations with compatible JSON params', async () => {
+    const plan: ImagesRequestPlan = {
+      id: 'json',
+      transport: 'json',
+      bodyMode: 'json',
+    }
+
+    const spec = await buildImagesRequestSpec({
+      opts: fakeOptions({
+        prompt: 'generate an image',
+        inputImageFiles: [],
+      }),
+      plan,
+      ctx: fakeContext(),
+    })
+
+    expect(spec.stage).toBe('images.generate.json')
+    expect(spec.requestUrl).toBe('https://blue-cherry-a344.bactdt.workers.dev/krill/v1/images/generations')
+    expect(spec.requestInit.headers).toMatchObject({
+      'Content-Type': 'application/json',
+    })
+    expect(JSON.parse(spec.requestInit.body as string)).toEqual({
+      model: 'cn-gpt-image-2',
+      prompt: 'generate an image',
+      size: '1024x1024',
+      quality: 'medium',
+      output_format: 'png',
+      moderation: 'low',
+      response_format: 'b64_json',
+    })
+  })
+
   it('builds Krill edits as multipart FormData without JSON image_url payloads', async () => {
     const plan: ImagesRequestPlan = {
       id: 'multipart-body-json',
