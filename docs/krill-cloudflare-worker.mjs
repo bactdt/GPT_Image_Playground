@@ -4,8 +4,8 @@ const TARGET_KRILL = "https://api.krill-ai.com/v1";
 const JOB_TTL_SECONDS = 60 * 60 * 24;
 const JOB_PREFIX = "krill:job:";
 const OBJECT_PREFIX = "krill/jobs";
-const MAX_KRILL_ATTEMPTS = 3;
-const KRILL_RETRY_DELAYS_SECONDS = [60, 180];
+const MAX_KRILL_ATTEMPTS = 4;
+const KRILL_RETRY_DELAYS_SECONDS = [45, 90, 180];
 const RETRYABLE_UPSTREAM_STATUS = new Set([408, 409, 425, 429, 500, 502, 503, 504, 520, 522, 524]);
 
 export default {
@@ -363,21 +363,14 @@ async function buildKrillUpstreamJobRequest(job, env, attempt) {
   if (authHeader) headers.set("Authorization", authHeader);
 
   if (job.kind === "generate") {
+    const body = buildKrillGenerateBody(job, attempt);
     headers.set("Content-Type", "application/json");
     return {
       url: `${TARGET_KRILL}/images/generations`,
       init: {
         method: "POST",
         headers,
-        body: JSON.stringify({
-          model: "cn-gpt-image-2",
-          prompt: job.params.prompt,
-          size: job.params.size || "1024x1024",
-          quality: job.params.quality || "medium",
-          output_format: "png",
-          moderation: "low",
-          response_format: "b64_json",
-        }),
+        body: JSON.stringify(body),
       },
     };
   }
@@ -409,6 +402,29 @@ async function buildKrillUpstreamJobRequest(job, env, attempt) {
       body: form,
     },
   };
+}
+
+function buildKrillGenerateBody(job, attempt) {
+  const body = {
+    model: "cn-gpt-image-2",
+    prompt: job.params.prompt,
+    size: "512x512",
+    quality: "medium",
+    output_format: "png",
+    moderation: "low",
+  };
+
+  if (attempt <= 2) {
+    body.response_format = "b64_json";
+  }
+  if (attempt === 3) {
+    body.size = "1024x1024";
+  }
+  if (attempt >= 4) {
+    body.quality = "standard";
+  }
+
+  return body;
 }
 
 function matchKrillJobRoute(pathname) {
