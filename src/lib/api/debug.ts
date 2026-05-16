@@ -204,6 +204,7 @@ export async function buildApiErrorFromResponse(
   let errorMessage = `HTTP ${response.status}`
   let responseBody: unknown = undefined
   let responseText: string | undefined
+  let cloudflareError: ReturnType<typeof summarizeCloudflareErrorPage> | null = null
 
   try {
     const text = await response.text()
@@ -219,7 +220,8 @@ export async function buildApiErrorFromResponse(
       if (logEntry) {
         logEntry.responseText = summarizeDebugString(text)
       }
-      errorMessage = text
+      cloudflareError = summarizeCloudflareErrorPage(text, response.status)
+      errorMessage = cloudflareError?.message ?? text
     }
   } catch {
     /* ignore */
@@ -232,11 +234,42 @@ export async function buildApiErrorFromResponse(
   if (responseText?.trim()) {
     details.responseText = responseText
   }
+  if (cloudflareError) {
+    details.cloudflare = cloudflareError.details
+  }
 
   return createApiError(errorMessage, response.status, {
     requestId,
     details: Object.keys(details).length > 0 ? details : undefined,
   })
+}
+
+function summarizeCloudflareErrorPage(
+  text: string,
+  fallbackStatus: number,
+): { message: string; details: Record<string, unknown> } | null {
+  if (!/cloudflare/i.test(text) || !/(?:cf-error-details|Error code\s+\d{3})/i.test(text)) {
+    return null
+  }
+
+  const code = /Error code\s+(\d{3})/i.exec(text)?.[1] ?? String(fallbackStatus)
+  const title =
+    /<title>[^|<]*\|\s*(?:\d{3}:\s*)?([^<]+)<\/title>/i.exec(text)?.[1]?.trim() ||
+    /<span[^>]*class="[^"]*\binline-block\b[^"]*"[^>]*>\s*([^<]+?)\s*<\/span>/i.exec(text)?.[1]?.trim() ||
+    'Bad gateway'
+  const host = /id="cf-host-status"[\s\S]*?<span[^>]*>\s*([^<]+?)\s*<\/span>/i.exec(text)?.[1]?.trim()
+  const message = host
+    ? `上游站点返回 Cloudflare ${code} ${title}（Host ${host}）。请稍后重试，或切换到可用的供应商/中转站。`
+    : `上游站点返回 Cloudflare ${code} ${title}。请稍后重试，或切换到可用的供应商/中转站。`
+
+  return {
+    message,
+    details: {
+      code,
+      title,
+      ...(host ? { host } : {}),
+    },
+  }
 }
 
 function summarizeRequestHeadersForDebug(headers: Record<string, string>): Record<string, unknown> {
