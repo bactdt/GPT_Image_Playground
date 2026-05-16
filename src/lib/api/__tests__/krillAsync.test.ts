@@ -41,6 +41,15 @@ function fakeOptions(): CallApiOptions {
   }
 }
 
+function fakeGenerateOptions(): CallApiOptions {
+  return {
+    ...fakeOptions(),
+    prompt: 'generate this image',
+    inputImageDataUrls: [],
+    inputImageFiles: [],
+  }
+}
+
 function fakeContext(): SharedRequestContext {
   return {
     controller: new AbortController(),
@@ -60,6 +69,39 @@ afterEach(() => {
 })
 
 describe('callKrillAsyncImagesApi', () => {
+  it('creates a multipart async job for Krill generations too', async () => {
+    vi.useFakeTimers()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ jobId: 'job_generate', status: 'queued' })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        jobId: 'job_generate',
+        status: 'succeeded',
+        result: {
+          data: [
+            {
+              b64_json: tinyPngBase64(),
+            },
+          ],
+        },
+      })))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const resultPromise = callKrillAsyncImagesApi(fakeGenerateOptions(), fakeContext())
+    await vi.advanceTimersByTimeAsync(3000)
+    const result = await resultPromise
+
+    expect(result.images).toHaveLength(1)
+    const createInit = fetchMock.mock.calls[0][1] as RequestInit
+    expect(createInit.body).toBeInstanceOf(FormData)
+    const form = createInit.body as FormData
+    expect(form.get('model')).toBe('cn-gpt-image-2')
+    expect(form.get('prompt')).toBe('generate this image')
+    expect(form.get('size')).toBe('1024x1024')
+    expect(form.get('quality')).toBe('medium')
+    expect(form.get('response_format')).toBe('b64_json')
+    expect(form.get('image[]')).toBeNull()
+  })
+
   it('creates a multipart async job and polls until image result is ready', async () => {
     vi.useFakeTimers()
     const fetchMock = vi.fn()

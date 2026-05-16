@@ -177,10 +177,6 @@ async function createKrillJob(request, env, cors) {
   if (!prompt) {
     return json({ error: "Missing prompt" }, 400, cors);
   }
-  if (images.length === 0) {
-    return json({ error: "Missing image[]" }, 400, cors);
-  }
-
   const authHeader = resolveIncomingAuth(request, env);
   if (!authHeader) {
     return json({ error: "Missing Authorization header or KRILL_API_KEY secret" }, 401, cors);
@@ -221,6 +217,7 @@ async function createKrillJob(request, env, cors) {
     status: "queued",
     createdAt,
     updatedAt: createdAt,
+    kind: images.length > 0 || mask ? "edit" : "generate",
     params: {
       model: "cn-gpt-image-2",
       prompt,
@@ -288,34 +285,8 @@ async function processKrillJob(jobId, env) {
   await saveJob(env, job);
 
   try {
-    const form = new FormData();
-    form.append("model", "cn-gpt-image-2");
-    form.append("prompt", job.params.prompt);
-    form.append("size", job.params.size || "1024x1024");
-    form.append("quality", job.params.quality || "medium");
-    form.append("output_format", "png");
-    form.append("moderation", "low");
-    form.append("response_format", "b64_json");
-
-    for (const file of job.files || []) {
-      const blob = await readFileBlob(env, file);
-      form.append(resolveUpstreamImageFieldName(attempt), blob, file.fileName || "image.png");
-    }
-
-    if (job.maskFile) {
-      const blob = await readFileBlob(env, job.maskFile);
-      form.append("mask", blob, job.maskFile.fileName || "mask.png");
-    }
-
-    const headers = new Headers();
-    const authHeader = env.KRILL_API_KEY ? `Bearer ${env.KRILL_API_KEY}` : job.authHeader;
-    if (authHeader) headers.set("Authorization", authHeader);
-
-    const response = await fetch(`${TARGET_KRILL}/images/edits`, {
-      method: "POST",
-      headers,
-      body: form,
-    });
+    const upstreamRequest = await buildKrillUpstreamJobRequest(job, env, attempt);
+    const response = await fetch(upstreamRequest.url, upstreamRequest.init);
     const payload = normalizeImagePayload(await readPayload(response));
 
     if (!response.ok) {
@@ -346,7 +317,9 @@ async function processKrillJob(jobId, env) {
       error: undefined,
       authHeader: undefined,
     });
-    await cleanupInputObjects(env, job);
+    if (job.kind === "edit") {
+      await cleanupInputObjects(env, job);
+    }
   } catch (error) {
     if (shouldRetryKrillJob(error, attempt)) {
       const delaySeconds = retryDelaySeconds(attempt);
@@ -378,8 +351,64 @@ async function processKrillJob(jobId, env) {
       },
       authHeader: undefined,
     });
-    await cleanupInputObjects(env, job);
+    if (job.kind === "edit") {
+      await cleanupInputObjects(env, job);
+    }
   }
+}
+
+async function buildKrillUpstreamJobRequest(job, env, attempt) {
+  const headers = new Headers();
+  const authHeader = env.KRILL_API_KEY ? `Bearer ${env.KRILL_API_KEY}` : job.authHeader;
+  if (authHeader) headers.set("Authorization", authHeader);
+
+  if (job.kind === "generate") {
+    headers.set("Content-Type", "application/json");
+    return {
+      url: `${TARGET_KRILL}/images/generations`,
+      init: {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          model: "cn-gpt-image-2",
+          prompt: job.params.prompt,
+          size: job.params.size || "1024x1024",
+          quality: job.params.quality || "medium",
+          output_format: "png",
+          moderation: "low",
+          response_format: "b64_json",
+        }),
+      },
+    };
+  }
+
+  const form = new FormData();
+  form.append("model", "cn-gpt-image-2");
+  form.append("prompt", job.params.prompt);
+  form.append("size", job.params.size || "1024x1024");
+  form.append("quality", job.params.quality || "medium");
+  form.append("output_format", "png");
+  form.append("moderation", "low");
+  form.append("response_format", "b64_json");
+
+  for (const file of job.files || []) {
+    const blob = await readFileBlob(env, file);
+    form.append(resolveUpstreamImageFieldName(attempt), blob, file.fileName || "image.png");
+  }
+
+  if (job.maskFile) {
+    const blob = await readFileBlob(env, job.maskFile);
+    form.append("mask", blob, job.maskFile.fileName || "mask.png");
+  }
+
+  return {
+    url: `${TARGET_KRILL}/images/edits`,
+    init: {
+      method: "POST",
+      headers,
+      body: form,
+    },
+  };
 }
 
 function matchKrillJobRoute(pathname) {

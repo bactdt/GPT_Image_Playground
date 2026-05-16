@@ -52,6 +52,11 @@ export async function callImagesApi(
 ): Promise<CallApiResult> {
   const { settings, inputImageDataUrls, inputImageFiles } = opts
   const isEdit = inputImageDataUrls.length > 0 || inputImageFiles.length > 0
+  const isKrill = isKrillProviderName(opts.providerName)
+  if (isKrill) {
+    return callKrillAsyncImagesApi(opts, ctx)
+  }
+
   const forceMultipartOnly = isEdit && isKrillProviderName(opts.providerName)
   if (forceMultipartOnly) {
     return callKrillAsyncImagesApi(opts, ctx)

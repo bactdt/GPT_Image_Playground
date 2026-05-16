@@ -12,6 +12,7 @@ import {
   collectImageGenerationCallsFromPayload,
   parseImagesFromPayload,
 } from './imagePayload'
+import { resolveKrillImageParams } from './providerCompat'
 import { readImagesPayload } from './payloadText'
 import { extractErrorMessage } from './errors'
 import type {
@@ -39,6 +40,11 @@ const KRILL_MULTIPART_JSON_PLAN: ImagesRequestPlan = {
   id: 'multipart-body-json',
   transport: 'json',
   bodyMode: 'multipart',
+}
+
+interface KrillAsyncCreatePayload {
+  body: BodyInit
+  debugBody: Record<string, unknown>
 }
 
 function trimTrailingSlashes(value: string): string {
@@ -175,6 +181,50 @@ async function readJsonResponse(
   return readImagesPayload(response, logEntry)
 }
 
+async function buildKrillAsyncCreatePayload(
+  opts: CallApiOptions,
+): Promise<KrillAsyncCreatePayload> {
+  const isEdit = opts.inputImageDataUrls.length > 0 || opts.inputImageFiles.length > 0
+  if (isEdit) {
+    const { formData, debugBody } = await buildImagesEditMultipartPayload(opts, KRILL_MULTIPART_JSON_PLAN)
+    return {
+      body: formData,
+      debugBody: {
+        ...debugBody,
+        bodyMode: 'multipart',
+        asyncMode: 'job_polling',
+      },
+    }
+  }
+
+  const params = resolveKrillImageParams(opts.params)
+  const formData = new FormData()
+  formData.append('model', params.model)
+  formData.append('prompt', opts.prompt)
+  formData.append('size', params.size)
+  formData.append('quality', params.quality)
+  formData.append('output_format', params.output_format)
+  formData.append('moderation', params.moderation)
+  formData.append('response_format', 'b64_json')
+
+  return {
+    body: formData,
+    debugBody: {
+      model: params.model,
+      prompt: opts.prompt,
+      size: params.size,
+      quality: params.quality,
+      output_format: params.output_format,
+      moderation: params.moderation,
+      response_format: 'b64_json',
+      imageCount: 0,
+      hasMask: false,
+      bodyMode: 'multipart',
+      asyncMode: 'job_polling',
+    },
+  }
+}
+
 async function pollKrillJob(
   createUrl: string,
   jobId: string,
@@ -224,24 +274,20 @@ export async function callKrillAsyncImagesApi(
   ctx: SharedRequestContext,
 ): Promise<CallApiResult> {
   const createUrl = buildRequestUrl(opts.settings.baseUrl, KRILL_ASYNC_CREATE_PATH, ctx)
-  const { formData, debugBody } = await buildImagesEditMultipartPayload(opts, KRILL_MULTIPART_JSON_PLAN)
+  const { body, debugBody } = await buildKrillAsyncCreatePayload(opts)
   const createLogEntry = createDebugRequestLogEntry(
     ctx,
     'krill.jobs.create',
     'POST',
     createUrl,
-    {
-      ...debugBody,
-      bodyMode: 'multipart',
-      asyncMode: 'job_polling',
-    },
+    debugBody,
   )
 
   const createResponse = await fetch(createUrl, {
     method: 'POST',
     headers: ctx.requestHeaders,
     cache: 'no-store',
-    body: formData,
+    body,
     signal: ctx.controller.signal,
   })
   const createPayload = await readJsonResponse(createResponse, createLogEntry)
