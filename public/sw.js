@@ -1,4 +1,4 @@
-const CACHE_NAME = 'gpt-image-playground-v0.1.6'
+const CACHE_NAME = 'gpt-image-playground-v0.1.7'
 const APP_CACHE_PREFIX = 'gpt-image-playground'
 const APP_SHELL = ['./', './index.html', './manifest.webmanifest', './pwa-icon.svg']
 const DEV_HOSTNAMES = new Set(['localhost', '127.0.0.1'])
