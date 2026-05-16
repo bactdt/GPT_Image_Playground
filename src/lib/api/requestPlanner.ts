@@ -305,7 +305,10 @@ export function buildResponsesRequestPlans(
  * 构建 Images 协议的 RequestPlan 列表。
  * 编辑场景下生成 json+multipart 两组 plan，按 transport 顺序排列。
  */
-export function buildImagesRequestPlans(settings: AppSettings, options?: { isEdit?: boolean }): ImagesRequestPlan[] {
+export function buildImagesRequestPlans(
+  settings: AppSettings,
+  options?: { isEdit?: boolean; forceMultipartOnly?: boolean },
+): ImagesRequestPlan[] {
   const mode = getResponsesTransportMode(settings)
 
   if (!options?.isEdit) {
@@ -315,6 +318,16 @@ export function buildImagesRequestPlans(settings: AppSettings, options?: { isEdi
       transport,
       bodyMode: 'json',
     }))
+  }
+
+  if (options.forceMultipartOnly) {
+    return [
+      {
+        id: 'multipart-body-json',
+        transport: 'json',
+        bodyMode: 'multipart',
+      },
+    ]
   }
 
   if (mode === 'json') {
@@ -404,7 +417,7 @@ export function createResponsesPlanner(
 
 export function createImagesPlanner(
   settings: AppSettings,
-  options?: { isEdit?: boolean },
+  options?: { isEdit?: boolean; forceMultipartOnly?: boolean },
 ): PlannerSession<ImagesRequestPlan> {
   const requested = getResponsesTransportMode(settings)
   return createPlannerSession(requested, buildImagesRequestPlans(settings, options), shouldRetryImagesPlan)

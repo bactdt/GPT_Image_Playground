@@ -10,6 +10,7 @@ import type { readClientDevProxyConfig } from '../devProxy'
 
 export interface CallImageApiIntent {
   settings: AppSettings
+  providerName?: string | null
   prompt: string
   params: TaskParams
   inputImages: ApiInputImage[]
@@ -19,22 +20,38 @@ export interface CallImageApiIntent {
 }
 
 export interface ApiInputImage {
-  dataUrl: string
+  dataUrl?: string
+  blob?: Blob
   id?: string
+  fileName?: string
+  mimeType?: string | null
 }
 
 export interface ApiEditMask {
-  dataUrl: string
+  dataUrl?: string
+  blob?: Blob
   sourceImageId?: string | null
   selection?: ImageEditSelection | null
+  fileName?: string
+  mimeType?: string | null
+}
+
+export interface ApiInputImageFile {
+  blob: Blob
+  id?: string
+  fileName?: string
+  mimeType?: string | null
 }
 
 export interface CallApiOptions {
   settings: AppSettings
+  providerName?: string | null
   prompt: string
   params: TaskParams
   inputImageDataUrls: string[]
+  inputImageFiles: ApiInputImageFile[]
   editMaskDataUrl?: string
+  editMaskFile?: ApiInputImageFile
   editSelection?: ImageEditSelection | null
   editSourceImageIndex?: number
   onFinalImages?: (images: ApiImageAsset[]) => void | Promise<void>

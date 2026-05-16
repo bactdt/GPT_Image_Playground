@@ -12,8 +12,10 @@ import {
   parseImagesFromPayload,
 } from './imagePayload'
 import { readImagesPayload } from './payloadText'
+import { isKrillProviderName } from './providerCompat'
 import { createImagesPlanner, mergeTaskResponseTransportMeta } from './requestPlanner'
 import { buildImagesRequestSpec } from './imagesRequestBuilder'
+import { callKrillAsyncImagesApi } from './krillAsync'
 import { readImagesPayloadStream } from './sseReader'
 import type {
   ApiImageAsset,
@@ -48,9 +50,14 @@ export async function callImagesApi(
   opts: CallApiOptions,
   ctx: SharedRequestContext,
 ): Promise<CallApiResult> {
-  const { settings, inputImageDataUrls } = opts
-  const isEdit = inputImageDataUrls.length > 0
-  const planner = createImagesPlanner(settings, { isEdit })
+  const { settings, inputImageDataUrls, inputImageFiles } = opts
+  const isEdit = inputImageDataUrls.length > 0 || inputImageFiles.length > 0
+  const forceMultipartOnly = isEdit && isKrillProviderName(opts.providerName)
+  if (forceMultipartOnly) {
+    return callKrillAsyncImagesApi(opts, ctx)
+  }
+
+  const planner = createImagesPlanner(settings, { isEdit, forceMultipartOnly })
 
   while (true) {
     const plan = planner.currentPlan

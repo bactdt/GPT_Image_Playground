@@ -47,6 +47,17 @@ describe("buildImagesRequestPlans", () => {
     expect(plans.map(p => p.bodyMode)).toEqual(["json", "multipart", "json", "multipart"])
   })
 
+  it("returns only multipart json plan when edit requires multipart", () => {
+    const plans = buildImagesRequestPlans(fakeSettings(), { isEdit: true, forceMultipartOnly: true })
+    expect(plans).toEqual([
+      {
+        id: "multipart-body-json",
+        transport: "json",
+        bodyMode: "multipart",
+      },
+    ])
+  })
+
   it("returns only json when transport set to json", () => {
     const plans = buildImagesRequestPlans(fakeSettings({ responsesTransport: "json" }), { isEdit: false })
     expect(plans.length).toBe(1)

@@ -13,6 +13,7 @@ import type {
   ApiDebugRequestLogEntry,
   ApiDebugRequestSnapshot,
   ApiError,
+  ApiInputImageFile,
   CallApiOptions,
   SharedRequestContext,
 } from './types'
@@ -277,9 +278,29 @@ function summarizeInputImageForDebug(
   }
 }
 
+function summarizeInputImageFileForDebug(
+  value: ApiInputImageFile,
+  index: number,
+): NonNullable<ApiDebugRequestSnapshot['inputImages']>[number] {
+  return {
+    index,
+    kind: 'blob',
+    mime: value.mimeType || value.blob.type || null,
+    sizeBytes: value.blob.size,
+  }
+}
+
 function summarizeMaskForDebug(
   value: string | undefined,
+  file?: ApiInputImageFile,
 ): NonNullable<ApiDebugRequestSnapshot['editMask']> {
+  if (file) {
+    return {
+      ...summarizeInputImageFileForDebug(file, 0),
+      present: true,
+    }
+  }
+
   if (!value) {
     return {
       present: false,
@@ -295,6 +316,10 @@ function summarizeMaskForDebug(
 }
 
 function buildLocalDebugRequestSnapshot(opts: CallApiOptions): ApiDebugRequestSnapshot {
+  const inputImages = opts.inputImageFiles.length > 0
+    ? opts.inputImageFiles.map((value, index) => summarizeInputImageFileForDebug(value, index))
+    : opts.inputImageDataUrls.map((value, index) => summarizeInputImageForDebug(value, index))
+
   return {
     baseUrl: opts.settings.baseUrl,
     requestMode: opts.settings.requestMode,
@@ -306,7 +331,7 @@ function buildLocalDebugRequestSnapshot(opts: CallApiOptions): ApiDebugRequestSn
     responsesPromptRevisionMode: opts.settings.responsesPromptRevisionMode || null,
     prompt: opts.prompt,
     params: opts.params,
-    inputImages: opts.inputImageDataUrls.map((value, index) => summarizeInputImageForDebug(value, index)),
-    editMask: summarizeMaskForDebug(opts.editMaskDataUrl),
+    inputImages,
+    editMask: summarizeMaskForDebug(opts.editMaskDataUrl, opts.editMaskFile),
   }
 }

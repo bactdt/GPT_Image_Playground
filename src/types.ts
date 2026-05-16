@@ -187,7 +187,7 @@ export interface TaskResponseMeta {
 
 export interface TaskErrorDebugImageSummary {
   index?: number
-  kind: 'data_url' | 'remote_url' | 'unknown'
+  kind: 'blob' | 'data_url' | 'remote_url' | 'unknown'
   mime?: string | null
   sizeBytes?: number | null
   url?: string | null

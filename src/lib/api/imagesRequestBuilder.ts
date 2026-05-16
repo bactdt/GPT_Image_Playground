@@ -1,11 +1,30 @@
 import { buildRequestUrl } from './config'
 import { createApiError, dataUrlToBlob, isDataUrl, isHttpUrl } from './imageTransforms'
-import type { CallApiOptions, ImagesRequestPlan, SharedRequestContext } from './types'
+import { getImageExtensionFromMimeType } from '../imageMime'
+import { isKrillProviderName, resolveKrillEditParams } from './providerCompat'
+import type { ApiInputImageFile, CallApiOptions, ImagesRequestPlan, SharedRequestContext } from './types'
 
 interface BuildImagesRequestSpecOptions {
-  opts: Pick<CallApiOptions, 'settings' | 'prompt' | 'params' | 'inputImageDataUrls' | 'editMaskDataUrl'>
+  opts: Pick<
+    CallApiOptions,
+    | 'settings'
+    | 'providerName'
+    | 'prompt'
+    | 'params'
+    | 'inputImageDataUrls'
+    | 'inputImageFiles'
+    | 'editMaskDataUrl'
+    | 'editMaskFile'
+  >
   plan: ImagesRequestPlan
   ctx: SharedRequestContext
+}
+
+export type ImagesEditMultipartSource = BuildImagesRequestSpecOptions['opts']
+
+export interface ImagesEditMultipartPayload {
+  formData: FormData
+  debugBody: Record<string, unknown>
 }
 
 export interface ImagesRequestSpec {
@@ -17,10 +36,21 @@ export interface ImagesRequestSpec {
 
 function appendCommonEditFormFields(
   formData: FormData,
-  opts: Pick<CallApiOptions, 'settings' | 'prompt' | 'params'>,
+  opts: Pick<CallApiOptions, 'settings' | 'providerName' | 'prompt' | 'params'>,
   plan: ImagesRequestPlan,
 ) {
   const { settings, prompt, params } = opts
+  if (isKrillProviderName(opts.providerName)) {
+    const krillParams = resolveKrillEditParams(params)
+    formData.append('model', krillParams.model)
+    formData.append('prompt', prompt)
+    formData.append('size', krillParams.size)
+    formData.append('quality', krillParams.quality)
+    formData.append('output_format', krillParams.output_format)
+    formData.append('moderation', krillParams.moderation)
+    return
+  }
+
   formData.append('model', settings.model)
   formData.append('prompt', prompt)
   formData.append('size', params.size)
@@ -35,6 +65,79 @@ function appendCommonEditFormFields(
   }
   if (plan.transport === 'stream') {
     formData.append('stream', 'true')
+  }
+}
+
+function resolveFileName(file: ApiInputImageFile, fallbackName: string): string {
+  if (file.fileName?.trim()) {
+    return file.fileName
+  }
+
+  const mimeType = file.mimeType || file.blob.type
+  const ext = mimeType ? getImageExtensionFromMimeType(mimeType) : 'png'
+  return `${fallbackName}.${ext}`
+}
+
+export async function buildImagesEditMultipartPayload(
+  opts: ImagesEditMultipartSource,
+  plan: ImagesRequestPlan,
+): Promise<ImagesEditMultipartPayload> {
+  const {
+    settings,
+    providerName,
+    prompt,
+    params,
+    inputImageDataUrls,
+    inputImageFiles,
+    editMaskDataUrl,
+    editMaskFile,
+  } = opts
+  const isKrillEdit = isKrillProviderName(providerName)
+  const formData = new FormData()
+  appendCommonEditFormFields(formData, opts, plan)
+
+  inputImageFiles.forEach((file, index) => {
+    formData.append('image[]', file.blob, resolveFileName(file, `input-${index + 1}`))
+  })
+  for (let index = 0; index < inputImageDataUrls.length; index += 1) {
+    const dataUrl = inputImageDataUrls[index]
+    const blob = await dataUrlToBlob(dataUrl)
+    const ext = blob.type ? getImageExtensionFromMimeType(blob.type) : 'png'
+    formData.append('image[]', blob, `input-${inputImageFiles.length + index + 1}.${ext}`)
+  }
+
+  if (editMaskFile) {
+    formData.append('mask', editMaskFile.blob, resolveFileName(editMaskFile, 'mask'))
+  } else if (editMaskDataUrl) {
+    const maskBlob = await dataUrlToBlob(editMaskDataUrl)
+    formData.append('mask', maskBlob, 'mask.png')
+  }
+
+  const debugParams = isKrillEdit
+    ? resolveKrillEditParams(params)
+    : {
+        model: settings.model,
+        size: params.size,
+        quality: params.quality,
+        output_format: params.output_format,
+        moderation: params.moderation,
+      }
+
+  return {
+    formData,
+    debugBody: {
+      model: debugParams.model,
+      prompt,
+      size: debugParams.size,
+      quality: debugParams.quality,
+      output_format: debugParams.output_format,
+      moderation: debugParams.moderation,
+      n: !isKrillEdit && params.n > 1 ? params.n : undefined,
+      output_compression: !isKrillEdit && params.output_format !== 'png' ? params.output_compression : undefined,
+      imageCount: inputImageFiles.length + inputImageDataUrls.length,
+      hasMask: Boolean(editMaskFile || editMaskDataUrl),
+      stream: !isKrillEdit && plan.transport === 'stream',
+    },
   }
 }
 
@@ -148,36 +251,14 @@ async function buildImagesEditMultipartRequestSpec({
   plan,
   ctx,
 }: BuildImagesRequestSpecOptions): Promise<ImagesRequestSpec> {
-  const { settings, prompt, params, inputImageDataUrls, editMaskDataUrl } = opts
-  const formData = new FormData()
-  appendCommonEditFormFields(formData, opts, plan)
-
-  for (let index = 0; index < inputImageDataUrls.length; index += 1) {
-    const dataUrl = inputImageDataUrls[index]
-    const blob = await dataUrlToBlob(dataUrl)
-    const ext = blob.type.split('/')[1] || 'png'
-    formData.append('image[]', blob, `input-${index + 1}.${ext}`)
-  }
-  if (editMaskDataUrl) {
-    const maskBlob = await dataUrlToBlob(editMaskDataUrl)
-    formData.append('mask', maskBlob, 'mask.png')
-  }
+  const { settings } = opts
+  const { formData, debugBody } = await buildImagesEditMultipartPayload(opts, plan)
 
   return {
     stage: `images.edit.${plan.id}`,
     requestUrl: buildRequestUrl(settings.baseUrl, 'images/edits', ctx),
     debugBody: {
-      model: settings.model,
-      prompt,
-      size: params.size,
-      quality: params.quality,
-      output_format: params.output_format,
-      moderation: params.moderation,
-      n: params.n > 1 ? params.n : undefined,
-      output_compression: params.output_format !== 'png' ? params.output_compression : undefined,
-      imageCount: inputImageDataUrls.length,
-      hasMask: Boolean(editMaskDataUrl),
-      stream: plan.transport === 'stream',
+      ...debugBody,
       bodyMode: plan.bodyMode,
     },
     requestInit: {
@@ -194,7 +275,7 @@ export async function buildImagesRequestSpec(
   options: BuildImagesRequestSpecOptions,
 ): Promise<ImagesRequestSpec> {
   const { opts, plan } = options
-  const isEdit = opts.inputImageDataUrls.length > 0
+  const isEdit = opts.inputImageDataUrls.length > 0 || opts.inputImageFiles.length > 0
 
   if (!isEdit) {
     return buildImagesGenerateRequestSpec(options)

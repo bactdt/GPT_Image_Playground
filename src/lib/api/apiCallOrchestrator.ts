@@ -3,6 +3,7 @@ import { getApiProtocol, MIME_MAP } from './config'
 import { attachLocalDebugToError } from './debug'
 import { callImagesApi } from './images'
 import { createApiError, normalizeEditMaskForProvider } from './imageTransforms'
+import { isKrillProviderName, KRILL_IMAGE_MODEL } from './providerCompat'
 import { callResponsesApi } from './responses'
 import type {
   ApiDebugRequestLogEntry,
@@ -30,19 +31,48 @@ function resolveEditSourceImageIndex(intent: CallImageApiIntent): number | undef
 }
 
 function buildCallApiOptions(intent: CallImageApiIntent): CallApiOptions {
-  const settings = import.meta.env.DEV
+  const rawSettings = import.meta.env.DEV
     ? intent.settings
     : {
         ...intent.settings,
         requestMode: 'direct' as const,
       }
+  const settings = isKrillProviderName(intent.providerName)
+    ? {
+        ...rawSettings,
+        apiProtocol: 'images' as const,
+        model: KRILL_IMAGE_MODEL,
+        responsesTransport: 'json' as const,
+      }
+    : rawSettings
 
   return {
     settings,
+    providerName: intent.providerName ?? null,
     prompt: intent.prompt,
     params: intent.params,
-    inputImageDataUrls: intent.inputImages.map((image) => image.dataUrl),
+    inputImageDataUrls: intent.inputImages.flatMap((image) =>
+      image.dataUrl ? [image.dataUrl] : [],
+    ),
+    inputImageFiles: intent.inputImages.flatMap((image) =>
+      image.blob
+        ? [{
+            blob: image.blob,
+            id: image.id,
+            fileName: image.fileName,
+            mimeType: image.mimeType,
+          }]
+        : [],
+    ),
     editMaskDataUrl: intent.editMask?.dataUrl,
+    editMaskFile: intent.editMask?.blob
+      ? {
+          blob: intent.editMask.blob,
+          fileName: intent.editMask.fileName,
+          mimeType: intent.editMask.mimeType,
+          id: intent.editMask.sourceImageId ?? undefined,
+        }
+      : undefined,
     editSelection: intent.editMask?.selection ?? null,
     editSourceImageIndex: resolveEditSourceImageIndex(intent),
     onFinalImages: intent.onFinalImages,
